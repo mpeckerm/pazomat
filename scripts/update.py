@@ -150,6 +150,52 @@ def parse_excel(path):
     return report_date, stations
 
 
+
+# ---------- ניקוי כתובות לאיתור מיקום ----------
+AREA_TYPES = ("city", "town", "village", "municipality", "state", "country", "county",
+              "hamlet", "suburb", "neighbourhood", "quarter", "district", "region")
+MAX_KM_FROM_CITY = 12
+GEO_VERSION = 2
+STATION_WORDS = r"(?:ב?ה?תחנת?(?:\s+(?:ה?דלק|פז|סונול|דור\s*אלון|דלק|ילו|yellow|יעד|טן|מנטה))?|ב?תחנה|מתחם|צומת|א\.?ת\.?|אזור\s+תעשיה|כביש|מול|ליד|בכניסה\s+ל\S+)"
+
+
+def km(a, b):
+    import math
+    R = 6371
+    la1, lo1, la2, lo2 = map(math.radians, (a["lat"], a["lng"], b["lat"], b["lng"]))
+    h = math.sin((la2 - la1) / 2) ** 2 + math.cos(la1) * math.cos(la2) * math.sin((lo2 - lo1) / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(h))
+
+
+def clean_name(n):
+    n = re.sub(r"\(.*?\)", " ", n)
+    n = re.sub(r"בע\\?\"?מ|בעמ", " ", n)
+    return clean(n.replace('"', " "))
+
+
+def street_candidates(street):
+    """מחזיר גרסאות מנוקות של הכתובת, מהמדויקת לכללית."""
+    s = re.sub(r"\(.*?\)", " ", street or "")
+    s = s.replace('"', " ")
+    s = re.sub(r"\bשד['׳]?\s", "שדרות ", s)
+    s = re.sub(r"\bרח['׳]?\s|\bרחוב\s", " ", s)
+    s = re.sub(r"\bדר['׳]\s", "דרך ", s)
+    s = clean(s)
+    out = []
+    m = re.search(r"([א-ת][א-ת'׳\- ]*?[א-ת])\s*(\d+)", s)
+    if m:
+        nm = clean(re.sub(STATION_WORDS, " ", m.group(1)))
+        nm = re.sub(r"^(.+?) \1$", r"\1", nm)
+        if nm:
+            out.append(f"{nm} {m.group(2)}")
+            out.append(nm)
+    rest = clean(re.sub(STATION_WORDS, " ", re.sub(r"[-–,]", " ", s)))
+    rest = clean(re.sub(r"\d+", " ", rest))
+    if rest and rest not in out and len(rest) > 2:
+        out.append(rest)
+    return out[:3]
+
+
 # ---------- Geocoding ----------
 class Geocoder:
     def __init__(self):
@@ -189,19 +235,21 @@ class Geocoder:
 
     def locate(self, s):
         street, city, name = s["street"], s["city"], s["name"]
-        tries = []
-        if street and re.search(r"\d", street):
-            tries.append(({"street": street, "city": city}, "exact"))
-        if street:
-            tries.append(({"q": f"{street}, {city}"}, "exact"))
-        tries.append(({"q": f"{name}, {city}"}, "exact"))
-        for params, quality in tries:
+        center = self._query({"q": city}) if city else None
+        cands = street_candidates(street)
+        tries = [({"street": c, "city": city}) for c in cands]
+        tries += [({"q": f"{c}, {city}"}) for c in cands]
+        tries.append({"q": f"{clean_name(name)}, {city}"})
+        for params in tries:
             r = self._query(params)
-            if r and r["type"] not in ("city", "town", "village", "municipality", "state", "country", "county", "hamlet", "suburb", "neighbourhood", "quarter"):
-                return r["lat"], r["lng"], quality
-        r = self._query({"q": city}) if city else None
-        if r:
-            return r["lat"], r["lng"], "approx"
+            if not r or r["type"] in AREA_TYPES:
+                continue
+            # בדיקת סבירות: התוצאה חייבת להיות קרובה ליישוב
+            if center and km(r, center) > MAX_KM_FROM_CITY:
+                continue
+            return r["lat"], r["lng"], "exact"
+        if center:
+            return center["lat"], center["lng"], "approx"
         return None, None, "none"
 
     def save(self):
@@ -324,7 +372,11 @@ def main():
     # Geocoding
     if not os.environ.get("NO_GEOCODE"):
         g = Geocoder()
-        todo = [s for s in stations if s.get("geo") in (None, "none")]
+        if meta.get("geoVersion") != GEO_VERSION:
+            todo = list(stations)
+            meta["geoVersion"] = GEO_VERSION
+        else:
+            todo = [s for s in stations if s.get("geo") in (None, "none")]
         if todo:
             print(f"מאתר מיקום ל-{len(todo)} תחנות...")
         for i, s in enumerate(todo, 1):
