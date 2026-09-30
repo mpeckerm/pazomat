@@ -1,0 +1,80 @@
+name: עדכון נתונים ופרסום
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      new_report: ${{ steps.update.outputs.new_report }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: התקנת ספרייה לקריאת Excel
+        run: pip install openpyxl==3.1.5
+
+      - name: הורדת ספריית המפה Leaflet (אם חסרה)
+        run: |
+          if [ ! -f src/vendor/leaflet.js ]; then
+            mkdir -p src/vendor /tmp/leaflet
+            curl -sL https://registry.npmjs.org/leaflet/-/leaflet-1.9.4.tgz | tar xz -C /tmp/leaflet
+            cp /tmp/leaflet/package/dist/leaflet.js /tmp/leaflet/package/dist/leaflet.css src/vendor/
+          fi
+
+      - name: עדכון נתונים ובניית index.html
+        id: update
+        run: python scripts/update.py
+
+      - name: שמירת השינויים במאגר
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "עדכון נתוני תחנות"
+            git push
+          fi
+
+      - name: פתיחת Issue עם דוח השינויים
+        if: steps.update.outputs.new_report == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue create --title "דוח שינויים בתחנות – ${{ steps.update.outputs.report_date }}" --body-file data/changes.md
+
+      - name: הכנת קבצי האתר
+        run: |
+          mkdir -p _site/icons
+          cp index.html manifest.json sw.js _site/
+          cp icons/*.png _site/icons/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

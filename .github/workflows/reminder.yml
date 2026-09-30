@@ -1,0 +1,25 @@
+name: תזכורת חודשית
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # ב-1 לכל חודש, 09:00 שעון ישראל (בערך)
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: פתיחת Issue תזכורת
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "זמן לעדכן את רשימת התחנות" \
+            --body "1. הורד את דוח תחנות פזומט (Excel) מאתר פז.
+          2. באתר GitHub, היכנס לתיקייה upload ולחץ Add file ← Upload files.
+          3. גרור את הקובץ ולחץ Commit changes.
+          4. בתוך כמה דקות יתעדכן הקישור, וייפתח Issue חדש עם דוח השינויים.
+          אחרי שסיימת, אפשר לסגור את ה-Issue הזה."
