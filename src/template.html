@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#005ea8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="פזומט">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>תחנות רחיצה פזומט</title>
+<style>/*{{LEAFLET_CSS}}*/</style>
+<style>
+:root{
+  --blue:#005ea8; --blue-dk:#004079; --yellow:#ffcd00; --ink:#16202c; --muted:#5d6b7c;
+  --line:#dde3ea; --bg:#f4f6f9; --card:#fff; --open:#1b8a3a; --closed:#b3261e; --unknown:#7a8796;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);
+  display:flex;flex-direction:column;text-align:right;-webkit-tap-highlight-color:transparent;
+  padding-top:env(safe-area-inset-top,0px)}
+button,input,select{font:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+
+/* סרגל עליון */
+.top{background:var(--blue);padding:10px 12px 10px;border-bottom:4px solid var(--yellow);z-index:1000;position:relative}
+.search{display:flex;align-items:center;background:#fff;border-radius:12px;padding:0 12px;height:46px}
+.search input{flex:1;border:0;outline:0;font-size:17px;background:transparent;min-width:0;height:100%}
+.search .clear{border:0;background:none;color:var(--muted);font-size:22px;padding:0 4px;line-height:1}
+.row{display:flex;gap:8px;margin-top:10px;align-items:center}
+.chip{border:0;border-radius:999px;padding:8px 14px;background:rgba(255,255,255,.16);color:#fff;font-size:15px;font-weight:600;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--yellow);color:var(--ink)}
+.chip:disabled{opacity:.6}
+.seg{margin-inline-start:auto;display:flex;background:rgba(255,255,255,.16);border-radius:999px;padding:3px}
+.seg button{border:0;background:none;color:#fff;border-radius:999px;padding:5px 14px;font-size:15px;font-weight:600}
+.seg button[aria-pressed="true"]{background:#fff;color:var(--blue)}
+
+/* תוכן */
+main{flex:1;position:relative;min-height:0}
+#map{position:absolute;inset:0;direction:ltr;background:#e8ecef}
+#list{position:absolute;inset:0;overflow-y:auto;padding:8px 0 90px;background:var(--bg)}
+#list[hidden],#map[hidden]{display:none}
+.item{display:flex;gap:12px;align-items:flex-start;width:100%;border:0;background:var(--card);text-align:right;
+  padding:14px 16px;border-bottom:1px solid var(--line)}
+.item .main{flex:1;min-width:0}
+.item .name{font-weight:700;font-size:16px}
+.item .addr{color:var(--muted);font-size:14px;margin-top:2px}
+.item .dist{font-weight:700;color:var(--blue);font-size:15px;white-space:nowrap;text-align:left}
+.item .dist small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.empty{padding:40px 24px;text-align:center;color:var(--muted)}
+.badge{display:inline-block;font-size:12.5px;font-weight:700;padding:2px 8px;border-radius:6px;margin-top:6px}
+.b-open{background:#e3f4e7;color:var(--open)} .b-closed{background:#fbe6e4;color:var(--closed)} .b-unknown{background:#edf0f3;color:var(--unknown)}
+
+/* סמנים */
+.pin{width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--blue);
+  border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.pin.open{background:var(--open)} .pin.closed{background:var(--closed)}
+.pin.approx{background:#fff;border-color:var(--blue);border-style:dashed}
+.pin.sel{background:var(--yellow);border-color:var(--ink)}
+.me{width:18px;height:18px;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 0 0 6px rgba(26,115,232,.25)}
+.leaflet-container{font-family:inherit}
+
+/* כרטיס תחנה */
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--card);border-radius:18px 18px 0 0;
+  box-shadow:0 -6px 24px rgba(0,0,0,.18);padding:10px 18px calc(16px + env(safe-area-inset-bottom,0px));
+  max-height:78vh;overflow-y:auto;animation:up .18s ease-out}
+@keyframes up{from{transform:translateY(30px);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.sheet{animation:none}}
+.grab{width:44px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 10px}
+.sheet h2{margin:0 0 2px;font-size:20px;padding-left:36px}
+.sheet .x{position:absolute;left:12px;top:12px;border:0;background:var(--bg);width:34px;height:34px;border-radius:50%;font-size:20px;line-height:1;color:var(--muted)}
+.sheet .addr{color:var(--muted);margin:0}
+.facts{display:flex;flex-wrap:wrap;gap:6px 16px;margin:10px 0 4px;font-size:15px}
+.facts b{color:var(--blue)}
+.note{font-size:13.5px;color:var(--muted);margin:6px 0 0}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.btn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:12px;border:0;
+  font-weight:700;font-size:16px;text-decoration:none;color:#fff;background:var(--blue)}
+.btn.waze{background:#33ccff;color:#06283d}
+.btn.gm{background:var(--blue)}
+.btn.sec{background:var(--bg);color:var(--ink);font-weight:600}
+.btn.full{grid-column:1/-1}
+details{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+summary{font-weight:600;color:var(--blue);cursor:pointer}
+table.hours{border-collapse:collapse;margin-top:8px;font-size:15px}
+table.hours td{padding:3px 0 3px 18px}
+
+/* סרגל תחתון */
+.foot{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);
+  border-top:1px solid var(--line);padding:6px 12px calc(6px + env(safe-area-inset-bottom,0px));font-size:13px;color:var(--muted)}
+.foot button{border:0;background:none;color:var(--blue);font-weight:700;padding:6px 4px}
+
+.toast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;
+  border-radius:10px;font-size:14px;z-index:1500;max-width:90vw;text-align:center}
+.toast[hidden]{display:none}
+.banner{position:absolute;top:10px;left:10px;right:10px;z-index:900;background:var(--yellow);color:var(--ink);
+  padding:10px 14px;border-radius:10px;font-weight:600;display:flex;align-items:center;gap:10px;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.banner[hidden]{display:none}
+.banner button{margin-inline-start:auto;border:0;background:var(--ink);color:#fff;border-radius:8px;padding:6px 10px}
+
+/* חלונות */
+dialog{border:0;border-radius:16px;padding:0;width:min(520px,94vw);max-height:88vh;color:var(--ink)}
+dialog::backdrop{background:rgba(10,20,35,.45)}
+.dlg{padding:18px 18px 16px;overflow-y:auto;max-height:88vh}
+.dlg h3{margin:0 0 12px;font-size:19px}
+.dlg p{margin:6px 0}
+.hrow{display:grid;grid-template-columns:62px 1fr;gap:6px 10px;align-items:center;margin-bottom:12px}
+.hrow select{height:40px;border:1px solid var(--line);border-radius:8px;padding:0 8px;background:#fff}
+.hrow .times{grid-column:2;display:flex;gap:8px;align-items:center}
+.hrow .times[hidden]{display:none}
+.hrow input[type=time]{height:40px;border:1px solid var(--line);border-radius:8px;padding:0 6px;flex:1;min-width:0}
+textarea{width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12.5px;direction:ltr;text-align:left}
+.stat{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:7px 0}
+.linkish{border:0;background:none;color:var(--blue);padding:4px 0;text-align:right;font-size:15px;display:block}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="search">
+    <input id="q" type="search" placeholder="חיפוש לפי שם תחנה או עיר" autocomplete="off" enterkeyhint="search" aria-label="חיפוש">
+    <button class="clear" id="qClear" aria-label="נקה חיפוש" hidden>×</button>
+  </div>
+  <div class="row">
+    <button class="chip" id="btnNear" aria-pressed="false">לידי</button>
+    <button class="chip" id="btnOpen" aria-pressed="false" hidden>פתוח עכשיו</button>
+    <div class="seg" role="group" aria-label="תצוגה">
+      <button id="vMap" aria-pressed="true">מפה</button>
+      <button id="vList" aria-pressed="false">רשימה</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="map"></div>
+  <div id="pickBanner" class="banner" hidden>לחץ על המפה במיקום המדויק של התחנה <button id="pickCancel">ביטול</button></div>
+  <div id="noGeoBanner" class="banner" hidden>המיקומים עדיין לא חושבו. אפשר להשתמש בחיפוש, ברשימה ובניווט לפי כתובת.</div>
+  <div id="list" hidden></div>
+</main>
+
+<footer class="foot">
+  <span id="updated"></span>
+  <button id="btnInfo">מידע ועריכות</button>
+</footer>
+
+<div id="sheet" class="sheet" hidden role="dialog" aria-modal="false" aria-labelledby="sName"></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<dialog id="dlgEdit"><div class="dlg" id="editBody"></div></dialog>
+<dialog id="dlgInfo"><div class="dlg" id="infoBody"></div></dialog>
+
+<script>/*{{LEAFLET_JS}}*/</script>
+<script id="data" type="application/json">{{DATA}}</script>
+<script>
+(function(){
+"use strict";
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const LS = 'pazomat-edits-v1';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- עריכות מקומיות ---------- */
+function loadEdits(){ try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch(e){ return {}; } }
+function saveEdits(){ try { localStorage.setItem(LS, JSON.stringify(edits)); } catch(e){} }
+let edits = loadEdits();
+
+const base = DATA.stations;
+let stations = [];
+function applyEdits(){
+  stations = base.map(s => {
+    const e = edits[s.id]; const o = Object.assign({}, s);
+    if (e){
+      if (e.lat != null && e.lng != null){ o.lat = e.lat; o.lng = e.lng; o.geo = 'manual'; }
+      if (e.hours !== undefined) o.hours = e.hours;
+    }
+    return o;
+  });
+}
+applyEdits();
+const byId = id => stations.find(s => s.id === id);
+
+/* ---------- שעות פעילות (שעון ישראל) ---------- */
+const DAYKEYS = [['sunThu',"א'–ה'"],['fri','שישי'],['sat','שבת']];
+function nowIL(){
+  const parts = new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Jerusalem',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date());
+  const get = t => parts.find(p => p.type === t).value;
+  const day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].indexOf(get('weekday'));
+  return { day, min: (+get('hour') % 24) * 60 + (+get('minute')) };
+}
+const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60 + (m||0); };
+const dayKey = d => d <= 4 ? 'sunThu' : d === 5 ? 'fri' : 'sat';
+function openState(s){
+  const h = s.hours; if (!h) return null;
+  const n = nowIL(); const v = h[dayKey(n.day)];
+  if (v === undefined) return null;
+  if (v === null) return false;
+  if (!Array.isArray(v) || v.length !== 2) return null;
+  const o = toMin(v[0]), c = toMin(v[1]);
+  if (o === c || (o === 0 && c >= 1440)) return true;
+  if (c > o) return n.min >= o && n.min < c;
+  // לילה: חוצה חצות, ובודקים גם את יום אתמול
+  if (n.min >= o) return true;
+  const prev = h[dayKey((n.day + 6) % 7)];
+  if (Array.isArray(prev) && toMin(prev[1]) < toMin(prev[0])) return n.min < toMin(prev[1]);
+  return n.min < c;
+}
+function hoursText(v){
+  if (v === undefined) return 'לא ידוע';
+  if (v === null) return 'סגור';
+  if (v[0] === v[1] || (v[0] === '00:00' && v[1] === '24:00')) return '24 שעות';
+  return v[0] + '–' + v[1];
+}
+function badge(s){
+  const st = openState(s);
+  if (st === true) return '<span class="badge b-open">פתוח עכשיו</span>';
+  if (st === false) return '<span class="badge b-closed">סגור עכשיו</span>';
+  return '<span class="badge b-unknown">שעות לא ידועות</span>';
+}
+
+/* ---------- מרחק ---------- */
+function haversine(a, b){
+  const R = 6371, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat/2)**2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+const fmtKm = km => km < 1 ? Math.round(km*1000) + ' מ\'' : (km < 10 ? km.toFixed(1) : Math.round(km)) + ' ק"מ';
+let user = null, air = {}, drive = {}, driveOk = null;
+
+async function fetchDriving(list){
+  if (!user || !list.length) return;
+  const coords = [user.lng + ',' + user.lat].concat(list.map(s => s.lng + ',' + s.lat)).join(';');
+  const url = 'https://router.project-osrm.org/table/v1/driving/' + coords + '?sources=0&annotations=distance,duration';
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 7000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    const j = await r.json();
+    if (j.code !== 'Ok') throw new Error(j.code);
+    list.forEach((s, i) => {
+      const d = j.distances[0][i+1], du = j.durations[0][i+1];
+      if (d != null) drive[s.id] = { km: d/1000, min: Math.round(du/60) };
+    });
+    driveOk = true;
+  } catch(e){
+    driveOk = false;
+    toast('מרחק נסיעה לא זמין כרגע. מוצג מרחק אווירי.');
+  } finally { clearTimeout(t); }
+}
+function distOf(s){
+  if (drive[s.id]) return { km: drive[s.id].km, min: drive[s.id].min, kind: 'נסיעה' };
+  if (air[s.id] != null) return { km: air[s.id], kind: 'אווירי' };
+  return null;
+}
+function distHtml(s){
+  const d = distOf(s); if (!d) return '';
+  return fmtKm(d.km) + (d.min != null ? '<small>' + d.min + ' דק\' נסיעה</small>' : '<small>מרחק אווירי</small>');
+}
+
+/* ---------- מצב וסינון ---------- */
+const state = { q: '', near: false, openOnly: false, view: 'map', sel: null, picking: null };
+const norm = s => String(s || '').toLowerCase().replace(/["'׳״`\-–.,()]/g, ' ').replace(/\s+/g, ' ').trim();
+function filtered(){
+  const q = norm(state.q);
+  let out = stations.filter(s => !q || norm(s.name + ' ' + s.city + ' ' + s.street).includes(q));
+  if (state.openOnly) out = out.filter(s => openState(s) === true);
+  if (state.near && user){
+    const k = s => { const d = distOf(s); return d ? d.km : 1e9; };
+    out.sort((a, b) => k(a) - k(b));
+  }
+  return out;
+}
+
+/* ---------- מפה ---------- */
+const map = L.map('map', { zoomControl: true, attributionControl: true }).setView([31.75, 34.95], 8);
+map.zoomControl.setPosition('bottomleft');
+map.attributionControl.setPrefix(false);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+let meMarker = null, meCircle = null;
+const markers = {};
+
+function pinIcon(s){
+  const st = openState(s);
+  let cls = 'pin';
+  if (s.id === state.sel) cls += ' sel';
+  else if (s.geo === 'approx') cls += ' approx';
+  else if (st === true) cls += ' open';
+  else if (st === false) cls += ' closed';
+  return L.divIcon({ className: '', html: '<div class="' + cls + '"></div>', iconSize: [22,22], iconAnchor: [11,24] });
+}
+function drawMarkers(list){
+  layer.clearLayers();
+  for (const k in markers) delete markers[k];
+  list.forEach(s => {
+    if (s.lat == null || s.lng == null) return;
+    const m = L.marker([s.lat, s.lng], { icon: pinIcon(s), title: s.name, keyboard: true });
+    m.on('click', () => select(s.id, false));
+    m.addTo(layer); markers[s.id] = m;
+  });
+  $('noGeoBanner').hidden = stations.some(s => s.lat != null) || state.view !== 'map';
+}
+
+/* ---------- רשימה ---------- */
+function drawList(list){
+  const el = $('list');
+  if (!list.length){
+    el.innerHTML = '<div class="empty">לא נמצאו תחנות' + (state.openOnly ? ' פתוחות עכשיו' : '') + '.</div>';
+    return;
+  }
+  el.innerHTML = list.map(s =>
+    '<button class="item" data-id="' + s.id + '"><div class="main"><div class="name">' + esc(s.name) + '</div>' +
+    '<div class="addr">' + esc([s.street, s.city].filter(Boolean).join(', ')) + '</div>' + badge(s) + '</div>' +
+    '<div class="dist">' + distHtml(s) + '</div></button>').join('');
+}
+$('list').addEventListener('click', e => {
+  const b = e.target.closest('.item'); if (b) select(b.dataset.id, false);
+});
+
+function render(){
+  const list = filtered();
+  drawMarkers(list);
+  drawList(list);
+}
+
+/* ---------- כרטיס תחנה ---------- */
+function navLinks(s){
+  const useCoords = s.lat != null && (s.geo === 'exact' || s.geo === 'manual');
+  const addr = [s.street, s.city].filter(Boolean).join(', ');
+  const waze = useCoords ? 'https://waze.com/ul?ll=' + s.lat + ',' + s.lng + '&navigate=yes'
+                         : 'https://waze.com/ul?q=' + encodeURIComponent(addr) + '&navigate=yes';
+  const gm = 'https://www.google.com/maps/dir/?api=1&destination=' + (useCoords ? s.lat + ',' + s.lng : encodeURIComponent(addr));
+  return { waze, gm };
+}
+function select(id, fly){
+  state.sel = id; const s = byId(id); if (!s) return;
+  const n = navLinks(s);
+  const d = distOf(s);
+  const today = s.hours ? hoursText(s.hours[dayKey(nowIL().day)]) : null;
+  let geoNote = '';
+  if (s.geo === 'approx') geoNote = '<p class="note">מיקום משוער לפי היישוב. הניווט יתבצע לפי הכתובת.</p>';
+  if (s.lat == null) geoNote = '<p class="note">המיקום לא אותר. הניווט יתבצע לפי הכתובת.</p>';
+  const tel = s.phone ? s.phone.replace(/\D/g, '') : '';
+  const onMap = state.view === 'list' && s.lat != null;
+  $('sheet').innerHTML =
+    '<div class="grab"></div><button class="x" id="sClose" aria-label="סגור">×</button>' +
+    '<h2 id="sName">' + esc(s.name) + '</h2>' +
+    '<p class="addr">' + esc([s.street, s.city].filter(Boolean).join(', ')) + '</p>' +
+    '<div class="facts">' + badge(s) +
+      (today ? '<span>היום: <b>' + esc(today) + '</b></span>' : '') +
+      (d ? '<span>' + (d.kind === 'נסיעה' ? 'נסיעה: ' : 'מרחק אווירי: ') + '<b>' + fmtKm(d.km) + (d.min != null ? ', ' + d.min + ' דק\'' : '') + '</b></span>' : '') +
+    '</div>' + geoNote +
+    '<div class="btns">' +
+      '<a class="btn waze" href="' + n.waze + '" target="_blank" rel="noopener">Waze</a>' +
+      '<a class="btn gm" href="' + n.gm + '" target="_blank" rel="noopener">Google Maps</a>' +
+      (tel ? '<a class="btn sec" href="tel:' + tel + '">התקשר ' + esc(s.phone) + '</a>' : '') +
+      (onMap ? '<button class="btn sec" id="sOnMap">הצג במפה</button>' : '') +
+      '<button class="btn sec' + (((tel ? 1 : 0) + (onMap ? 1 : 0) + 1) % 2 ? ' full' : '') + '" id="sEdit">עריכת שעות ומיקום</button>' +
+    '</div>' +
+    '<details><summary>שעות פעילות ופרטים</summary>' +
+      '<table class="hours">' + DAYKEYS.map(([k, l]) => '<tr><td>' + l + '</td><td>' + esc(s.hours ? hoursText(s.hours[k]) : 'לא ידוע') + '</td></tr>').join('') + '</table>' +
+      (s.services ? '<p class="note">שירותים: ' + esc(s.services) + '</p>' : '') +
+      '<p class="note">' + (s.geo === 'manual' ? 'מיקום שנקבע ידנית. ' : '') + 'נתונים מעודכנים ל-' + fmtDate(DATA.meta.reportDate) + '.</p>' +
+    '</details>';
+  $('sheet').hidden = false;
+  $('sClose').onclick = closeSheet;
+  $('sEdit').onclick = () => openEdit(s.id);
+  const om = $('sOnMap'); if (om) om.onclick = () => { setView('map'); select(s.id, true); };
+  render();
+  if (s.lat != null && state.view === 'map'){
+    if (fly) map.flyTo([s.lat, s.lng], Math.max(map.getZoom(), 14), { duration: .6 });
+    else map.panTo([s.lat, s.lng]);
+  }
+}
+function closeSheet(){ $('sheet').hidden = true; state.sel = null; render(); }
+map.on('click', e => {
+  if (state.picking){ finishPick(e.latlng); return; }
+  if (!$('sheet').hidden) closeSheet();
+});
+
+/* ---------- עריכה ---------- */
+function jsonLine(id){
+  const s = base.find(x => x.id === id), e = edits[id]; if (!e) return '';
+  const o = { id, name: s.name };
+  if (e.lat != null) { o.lat = e.lat; o.lng = e.lng; }
+  if (e.hours !== undefined) o.hours = e.hours;
+  return JSON.stringify(o);
+}
+function openEdit(id){
+  const s = byId(id), h = s.hours || {};
+  const row = (k, l) => {
+    const v = h[k];
+    const mode = v === undefined ? 'unknown' : v === null ? 'closed' : (v[0] === v[1] || (v[0]==='00:00' && v[1]==='24:00')) ? '24' : 'open';
+    return '<div class="hrow" data-k="' + k + '"><strong>' + l + '</strong>' +
+      '<select aria-label="' + l + '"><option value="unknown"' + (mode==='unknown'?' selected':'') + '>לא ידוע</option>' +
+      '<option value="open"' + (mode==='open'?' selected':'') + '>פתוח בשעות</option>' +
+      '<option value="24"' + (mode==='24'?' selected':'') + '>24 שעות</option>' +
+      '<option value="closed"' + (mode==='closed'?' selected':'') + '>סגור</option></select>' +
+      '<div class="times"' + (mode==='open' ? '' : ' hidden') + '><input type="time" value="' + (mode==='open'?v[0]:'07:00') + '" aria-label="פתיחה"> עד <input type="time" value="' + (mode==='open'?v[1]:'20:00') + '" aria-label="סגירה"></div></div>';
+  };
+  const line = jsonLine(id);
+  $('editBody').innerHTML =
+    '<h3>עריכה: ' + esc(s.name) + '</h3>' +
+    '<p class="note">העריכות נשמרות בטלפון הזה מיד. לשמירה קבועה לכל המכשירים ראה למטה.</p>' +
+    '<h4 style="margin:14px 0 8px">שעות פעילות</h4>' + DAYKEYS.map(([k, l]) => row(k, l)).join('') +
+    '<div class="btns"><button class="btn" id="eSave">שמור שעות</button><button class="btn sec" id="ePick">קבע מיקום במפה</button></div>' +
+    (line ? '<h4 style="margin:18px 0 6px">שמירה קבועה</h4><p class="note">העתק את השורה והדבק אותה בסוף הקובץ data/overrides.jsonl באתר GitHub.</p><textarea readonly id="eLine">' + esc(line) + '</textarea>' +
+      '<div class="btns"><button class="btn sec" id="eCopy">העתק שורה</button><button class="btn sec" id="eReset">מחק עריכות לתחנה</button></div>' : '') +
+    '<div class="btns"><button class="btn sec full" id="eClose">סגור</button></div>';
+  const dlg = $('dlgEdit');
+  dlg.querySelectorAll('.hrow select').forEach(sel => sel.onchange = () => { sel.parentElement.querySelector('.times').hidden = sel.value !== 'open'; });
+  $('eSave').onclick = () => {
+    const hours = {}; let any = false;
+    dlg.querySelectorAll('.hrow').forEach(r => {
+      const k = r.dataset.k, m = r.querySelector('select').value, t = r.querySelectorAll('input');
+      if (m === 'closed'){ hours[k] = null; any = true; }
+      else if (m === '24'){ hours[k] = ['00:00','24:00']; any = true; }
+      else if (m === 'open' && t[0].value && t[1].value){ hours[k] = [t[0].value, t[1].value]; any = true; }
+    });
+    edits[id] = Object.assign({}, edits[id]);
+    if (any) edits[id].hours = hours; else delete edits[id].hours;
+    if (!Object.keys(edits[id]).length) delete edits[id];
+    saveEdits(); applyEdits(); updateOpenBtn(); toast('השעות נשמרו');
+    openEdit(id); select(id, false);
+  };
+  $('ePick').onclick = () => { dlg.close(); startPick(id); };
+  $('eClose').onclick = () => dlg.close();
+  if (line){
+    $('eCopy').onclick = () => copy(line);
+    $('eReset').onclick = () => { delete edits[id]; saveEdits(); applyEdits(); updateOpenBtn(); dlg.close(); select(id, false); toast('העריכות נמחקו מהטלפון'); };
+  }
+  if (!dlg.open) dlg.showModal();
+}
+function startPick(id){
+  state.picking = id; setView('map'); $('sheet').hidden = true;
+  const s = byId(id);
+  if (s.lat != null) map.setView([s.lat, s.lng], 16);
+  else if (user) map.setView([user.lat, user.lng], 15);
+  $('pickBanner').hidden = false;
+}
+function finishPick(ll){
+  const id = state.picking; state.picking = null; $('pickBanner').hidden = true;
+  edits[id] = Object.assign({}, edits[id], { lat: +ll.lat.toFixed(6), lng: +ll.lng.toFixed(6) });
+  saveEdits(); applyEdits(); toast('המיקום נשמר'); select(id, false); openEdit(id);
+}
+$('pickCancel').onclick = () => { state.picking = null; $('pickBanner').hidden = true; if (state.sel) select(state.sel, false); };
+
+/* ---------- מידע ---------- */
+function openInfo(){
+  const withGeo = stations.filter(s => s.lat != null && s.geo !== 'approx').length;
+  const approx = stations.filter(s => s.geo === 'approx');
+  const none = stations.filter(s => s.lat == null);
+  const withHours = stations.filter(s => s.hours).length;
+  const lines = Object.keys(edits).map(jsonLine).filter(Boolean);
+  const src = DATA.meta.sourceUrl ? '<a href="' + esc(DATA.meta.sourceUrl) + '" target="_blank" rel="noopener">' + esc(DATA.meta.sourceName) + '</a>' : esc(DATA.meta.sourceName);
+  const lst = arr => arr.map(s => '<button class="linkish" data-id="' + s.id + '">' + esc(s.name) + ', ' + esc(s.city) + '</button>').join('');
+  $('infoBody').innerHTML =
+    '<h3>מידע על הנתונים</h3>' +
+    '<div class="stat"><span>עדכון אחרון</span><b>' + fmtDate(DATA.meta.reportDate) + '</b></div>' +
+    '<div class="stat"><span>תחנות</span><b>' + stations.length + '</b></div>' +
+    '<div class="stat"><span>עם מיקום מדויק</span><b>' + withGeo + '</b></div>' +
+    '<div class="stat"><span>מיקום משוער</span><b>' + approx.length + '</b></div>' +
+    '<div class="stat"><span>ללא מיקום</span><b>' + none.length + '</b></div>' +
+    '<div class="stat"><span>עם שעות פעילות</span><b>' + withHours + '</b></div>' +
+    '<p class="note">מקור: ' + src + '</p>' +
+    (none.length ? '<details><summary>תחנות ללא מיקום (' + none.length + ')</summary>' + lst(none) + '</details>' : '') +
+    (approx.length ? '<details><summary>תחנות עם מיקום משוער (' + approx.length + ')</summary>' + lst(approx) + '</details>' : '') +
+    '<h3 style="margin-top:18px">העריכות שלי (' + lines.length + ')</h3>' +
+    (lines.length ? '<p class="note">לשמירה קבועה: העתק והדבק בסוף הקובץ data/overrides.jsonl באתר GitHub.</p><textarea readonly id="allLines">' + esc(lines.join('\n')) + '</textarea><div class="btns"><button class="btn sec full" id="copyAll">העתק את כל העריכות</button></div>'
+                  : '<p class="note">אין עריכות בטלפון הזה.</p>') +
+    '<p class="note" style="margin-top:14px">המיקום שלך משמש רק בתוך הדפדפן. לחישוב מרחק נסיעה נשלחות קואורדינטות בלבד לשירות הניתוב OSRM.</p>' +
+    '<div class="btns"><button class="btn sec full" id="infoClose">סגור</button></div>';
+  $('infoBody').querySelectorAll('.linkish').forEach(b => b.onclick = () => { $('dlgInfo').close(); select(b.dataset.id, true); });
+  $('infoClose').onclick = () => $('dlgInfo').close();
+  const ca = $('copyAll'); if (ca) ca.onclick = () => copy(lines.join('\n'));
+  $('dlgInfo').showModal();
+}
+$('btnInfo').onclick = openInfo;
+
+/* ---------- עזרים ---------- */
+function fmtDate(iso){ if (!iso) return '—'; const [y,m,d] = iso.split('-'); return d + '/' + m + '/' + y; }
+let toastT;
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 3200); }
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); toast('הועתק'); }
+  catch(e){ const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); toast('הועתק'); } catch(_){ toast('סמן והעתק ידנית'); } ta.remove(); }
+}
+
+/* ---------- כפתורים ---------- */
+function setView(v){
+  state.view = v;
+  $('vMap').setAttribute('aria-pressed', v === 'map'); $('vList').setAttribute('aria-pressed', v === 'list');
+  $('map').hidden = v !== 'map'; $('list').hidden = v !== 'list';
+  if (v === 'map') setTimeout(() => map.invalidateSize(), 0);
+  render();
+}
+$('vMap').onclick = () => setView('map');
+$('vList').onclick = () => setView('list');
+
+let qT;
+$('q').addEventListener('input', () => {
+  $('qClear').hidden = !$('q').value;
+  clearTimeout(qT); qT = setTimeout(() => {
+    state.q = $('q').value; render();
+    const list = filtered().filter(s => s.lat != null);
+    if (state.q && list.length && state.view === 'map') map.fitBounds(L.latLngBounds(list.map(s => [s.lat, s.lng])), { padding: [40,40], maxZoom: 14 });
+  }, 150);
+});
+$('qClear').onclick = () => { $('q').value = ''; $('qClear').hidden = true; state.q = ''; render(); };
+
+function updateOpenBtn(){
+  const n = stations.filter(s => s.hours).length;
+  $('btnOpen').hidden = n < 5;
+  if (n < 5 && state.openOnly){ state.openOnly = false; $('btnOpen').setAttribute('aria-pressed', 'false'); }
+}
+$('btnOpen').onclick = () => { state.openOnly = !state.openOnly; $('btnOpen').setAttribute('aria-pressed', state.openOnly); render(); };
+
+$('btnNear').onclick = () => {
+  if (state.near){ state.near = false; $('btnNear').setAttribute('aria-pressed', 'false'); render(); return; }
+  if (!navigator.geolocation){ toast('הדפדפן לא תומך באיתור מיקום'); return; }
+  $('btnNear').disabled = true; toast('מאתר את המיקום שלך...');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    user = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    air = {}; drive = {};
+    stations.forEach(s => { if (s.lat != null) air[s.id] = haversine(user, s); });
+    if (meMarker) { meMarker.remove(); meCircle.remove(); }
+    meCircle = L.circle([user.lat, user.lng], { radius: pos.coords.accuracy, color: '#1a73e8', weight: 1, fillOpacity: .08 }).addTo(map);
+    meMarker = L.marker([user.lat, user.lng], { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [18,18], iconAnchor: [9,9] }), interactive: false, zIndexOffset: 1000 }).addTo(map);
+    state.near = true; $('btnNear').setAttribute('aria-pressed', 'true');
+    const nearest = stations.filter(s => air[s.id] != null && s.geo !== 'approx').sort((a, b) => air[a.id] - air[b.id]).slice(0, 10);
+    render();
+    if (nearest.length){
+      map.fitBounds(L.latLngBounds([[user.lat, user.lng]].concat(nearest.slice(0, 5).map(s => [s.lat, s.lng]))), { padding: [50,50], maxZoom: 15 });
+      await fetchDriving(nearest);
+      render();
+      if (state.sel) select(state.sel, false);
+    } else map.setView([user.lat, user.lng], 13);
+    $('btnNear').disabled = false;
+  }, err => {
+    $('btnNear').disabled = false;
+    toast(err.code === 1 ? 'אין הרשאת מיקום. אפשר לאשר בהגדרות הדפדפן.' : 'לא הצלחתי לאתר מיקום. נסה שוב.');
+  }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+};
+
+/* ---------- התחלה ---------- */
+$('updated').textContent = 'עדכון אחרון: ' + fmtDate(DATA.meta.reportDate);
+updateOpenBtn();
+render();
+const pts = stations.filter(s => s.lat != null);
+if (pts.length) map.fitBounds(L.latLngBounds(pts.map(s => [s.lat, s.lng])), { padding: [20,20] });
+setInterval(() => render(), 5 * 60 * 1000); // רענון "פתוח עכשיו"
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+})();
+</script>
+</body>
+</html>
